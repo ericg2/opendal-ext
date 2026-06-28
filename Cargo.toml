@@ -1,0 +1,144 @@
+[package]
+name = "opendal-ext"
+version = "0.57.0"
+authors = ["Eric Gold"]
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+description = "OpenDAL Extension"
+
+[features]
+services-b2 = ["opendal/services-b2"]
+services-ftp = ["opendal/services-ftp"]
+services-swift = ["opendal/services-swift"]
+services-azblob = ["opendal/services-azblob"]
+services-azdls = ["opendal/services-azdls"]
+services-azfile = ["opendal/services-azfile"]
+services-cos = ["opendal/services-cos"]
+services-fs = ["opendal/services-fs"]
+services-dropbox = ["opendal/services-dropbox"]
+services-gdrive = ["opendal/services-gdrive"]
+services-gcs = ["opendal/services-gcs"]
+services-ghac = ["opendal/services-ghac"]
+services-http = ["opendal/services-http"]
+services-ipmfs = ["opendal/services-ipmfs"]
+services-memory = ["opendal/services-memory"]
+services-obs = ["opendal/services-obs"]
+services-onedrive = ["opendal/services-onedrive"]
+services-oss = ["opendal/services-oss"]
+services-pcloud = ["opendal/services-pcloud"]
+services-s3 = ["opendal/services-s3"]
+services-webdav = ["opendal/services-webdav"]
+services-webhdfs = ["opendal/services-webhdfs"]
+services-yandex-disk = ["opendal/services-yandex-disk"]
+services-sftp = ["opendal/services-sftp"]
+
+default = [
+    "services-b2",
+    "services-ftp",
+    "services-swift",
+    "services-azblob",
+    "services-azdls",
+    "services-azfile",
+    "services-cos",
+    "services-fs",
+    "services-dropbox",
+    "services-gdrive",
+    "services-gcs",
+    "services-ghac",
+    "services-http",
+    "services-ipmfs",
+    "services-memory",
+    "services-obs",
+    "services-onedrive",
+    "services-oss",
+    "services-pcloud",
+    "services-s3",
+    "services-webdav",
+    "services-webhdfs",
+    "services-yandex-disk",
+#    "services-sftp" - DOES NOT WORK ON WINDOWS 6/28/26
+]
+
+[dependencies]
+opendal = {
+    version = "0.57",
+    default-features = false,
+    features = [
+        "layers-retry",
+        "layers-concurrent-limit",
+        "layers-throttle"
+    ]
+}
+
+strum = { version = "0.28.0", features = ["derive"] }
+serde_with = { version = "3", features = ["base64"] }
+bytesize = { version = "2", features = ["serde"] }
+derive_setters = "0.1"
+serde-value = "0.7"
+anyhow = "1"
+serde = "1"
+paste = "1"
+heck = "0.5"
+async-trait = "0.1.89"
+futures-lite = "2.6.1"
+tokio = { version = "1.52", features = ["sync"] }
+
+[dev-dependencies]
+tokio = { version = "1.52", features = ["full"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+bad_style = { level = "warn", priority = -1 }
+trivial_casts = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+dead_code = "warn"
+improper_ctypes = "warn"
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
+non_shorthand_field_patterns = "warn"
+no_mangle_generic_items = "warn"
+overflowing_literals = "warn"
+path_statements = "warn"
+patterns_in_fns_without_body = "warn"
+trivial_numeric_casts = "warn"
+unused_results = "warn"
+unused_extern_crates = "warn"
+unused_import_braces = "warn"
+unconditional_recursion = "warn"
+unused = { level = "warn", priority = -1 }
+unused_allocation = "warn"
+unused_comparisons = "warn"
+unused_parens = "warn"
+while_true = "warn"
+unreachable_pub = "allow"
+
+[lints.clippy]
+redundant_pub_crate = "allow"
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# expect_used = "warn" # TODO!
+# unwrap_used = "warn" # TODO!
+literal_string_with_formatting_args = "allow"
+enum_glob_use = "warn"
+correctness = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+cast_lossless = "warn"
+default_trait_access = "warn"
+doc_markdown = "warn"
+manual_string_new = "warn"
+match_same_arms = "warn"
+semicolon_if_nothing_returned = "warn"
+trivially_copy_pass_by_ref = "warn"
+module_name_repetitions = "allow"
+missing_const_for_fn = "allow"
+needless_raw_string_hashes = "allow"
+
+[lints.rustdoc]
+# We run rustdoc with `--document-private-items` so we can document private items
+private_intra_doc_links = "allow"
