@@ -1870,9 +1870,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jiff"
-version = "0.2.29"
+version = "0.2.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34f877a98676d2fb664698d74cc6a51ce6c484ce8c770f05d0108ec9090aeb46"
+checksum = "7d75ad598edda7c00a28de3073b8fce023305057001c46aac1fb4fa5e5fb01d7"
 dependencies = [
  "defmt",
  "jiff-static",
@@ -1888,9 +1888,9 @@ dependencies = [
 
 [[package]]
 name = "jiff-static"
-version = "0.2.29"
+version = "0.2.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0666b5ab5ecaca213fc2a85b8c0083d9004e84ee2d5f9a7e0017aaf50986f25f"
+checksum = "2db1a96e4a8748d93838d0b7a67377781e53ad0a168005a66aab6ae17edbadf3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2301,9 +2301,12 @@ dependencies = [
  "derive_setters",
  "futures-lite",
  "heck",
+ "humantime-serde",
+ "log",
  "opendal",
  "paste",
- "rustic_opendal",
+ "rustic_backend",
+ "rustic_core",
  "serde",
  "serde-value",
  "serde_with",
@@ -2314,7 +2317,7 @@ dependencies = [
 [[package]]
 name = "opendal-ext"
 version = "0.57.0"
-source = "git+https://github.com/ericg2/opendal-ext.git#ec24d6597fcfca1161fbada984a6d1efd6a5f9ca"
+source = "git+https://github.com/ericg2/opendal-ext.git#0a1ad0e0a13bcd7747a8a433859db425cd9689e2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3759,7 +3762,7 @@ dependencies = [
 [[package]]
 name = "rustic_backend"
 version = "0.7.0"
-source = "git+https://github.com/ericg2/rustic_core#da94c55b56e431050692a7f9583592fbb9197ddc"
+source = "git+https://github.com/ericg2/rustic_core.git#27c47faf04eaa38664f30d057f132e5cca215cba"
 dependencies = [
  "aho-corasick",
  "backon",
@@ -3805,7 +3808,7 @@ checksum = "fbcebf2228827bc4b61cb54dfd84cf43aacf06ca2dfe4c014b136a0e32b876e2"
 [[package]]
 name = "rustic_core"
 version = "0.13.0"
-source = "git+https://github.com/ericg2/rustic_core#da94c55b56e431050692a7f9583592fbb9197ddc"
+source = "git+https://github.com/ericg2/rustic_core.git#27c47faf04eaa38664f30d057f132e5cca215cba"
 dependencies = [
  "aes256ctr_poly1305aes",
  "backon",
@@ -3852,21 +3855,6 @@ dependencies = [
  "walkdir",
  "xattr",
  "zstd",
-]
-
-[[package]]
-name = "rustic_opendal"
-version = "0.1.0"
-source = "git+https://github.com/ericg2/rustic_opendal.git#988661b9a32f596060948f05337e886f85792ecc"
-dependencies = [
- "bytes",
- "humantime-serde",
- "log",
- "opendal-core",
- "rustic_backend",
- "rustic_core",
- "serde",
- "tokio",
 ]
 
 [[package]]

@@ -33,7 +33,7 @@ services-webdav = ["opendal/services-webdav"]
 services-webhdfs = ["opendal/services-webhdfs"]
 services-yandex-disk = ["opendal/services-yandex-disk"]
 services-sftp = ["opendal/services-sftp"]
-services-rustic = ["rustic_opendal"]
+services-rustic = ["rustic_core", "rustic_backend"]
 blocking = ["opendal/blocking"]
 
 default = [
@@ -74,7 +74,9 @@ opendal = {
     ]
 }
 
-rustic_opendal = { version = "0.1", git = "https://github.com/ericg2/rustic_opendal.git", optional = true }
+humantime-serde = "1"
+rustic_core = { git = "https://github.com/ericg2/rustic_core.git", optional = true }
+rustic_backend = { git = "https://github.com/ericg2/rustic_core.git", optional = true }
 strum = { version = "0.28.0", features = ["derive"] }
 serde_with = { version = "3", features = ["base64"] }
 bytesize = { version = "2", features = ["serde"] }
@@ -87,6 +89,7 @@ heck = "0.5"
 async-trait = "0.1.89"
 futures-lite = "2.6.1"
 tokio = { version = "1.52", features = ["sync"] }
+log = "0.4.33"
 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full"] }

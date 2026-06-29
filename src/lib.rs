@@ -20,6 +20,12 @@ mod retry;
 mod throttle;
 mod util;
 
+#[cfg(feature = "services-rustic")]
+mod rustic_be;
+
+#[cfg(feature = "services-rustic")]
+mod rustic_config;
+
 /// Configuration for retry behavior used by extension layers.
 pub use retry::RetrySetting;
 
@@ -28,3 +34,6 @@ pub use throttle::Throttle;
 
 /// Re-export of the entire OpenDAL crate.
 pub use opendal::*;
+
+#[cfg(feature = "services-rustic")]
+pub use rustic_config::*;
