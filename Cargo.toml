@@ -59,7 +59,6 @@ default = [
     "services-webdav",
     "services-webhdfs",
     "services-yandex-disk",
-#    "services-sftp" - DOES NOT WORK ON WINDOWS 6/28/26
 ]
 
 [dependencies]
@@ -69,7 +68,8 @@ opendal = {
     features = [
         "layers-retry",
         "layers-concurrent-limit",
-        "layers-throttle"
+        "layers-throttle",
+        "layers-logging"
     ]
 }
 

@@ -88,16 +88,6 @@ macro_rules! opendal_add {
                     }
                 }
 
-                pub(crate) fn key(&self) -> Option<String> {
-                    match self {
-                        Scheme::Dynamic { backend, .. } => Some(backend.clone()),
-                        $(
-                            #[cfg(feature = $feature)]
-                            Scheme::$variant(_) => Some(stringify!($variant).to_string()),
-                        )*
-                    }
-                }
-
                 #[doc = "Attempts to create an Operator based on the Scheme."]
                 pub fn operator(&self) -> opendal::Result<opendal::Operator> {
                     match self {

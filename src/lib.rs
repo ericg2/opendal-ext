@@ -3,7 +3,7 @@
 pub mod quota;
 pub mod config;
 pub mod vfs;
-mod layers;
+mod util;
 mod macros;
 mod retry;
 mod throttle;
@@ -12,3 +12,5 @@ pub use {
     retry::RetrySetting,
     throttle::Throttle,
 };
+
+pub use opendal::*;

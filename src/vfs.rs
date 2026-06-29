@@ -56,8 +56,9 @@ use std::sync::Arc;
 use futures_lite::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use crate::layers::ReadOnlyLayer;
-use crate::{MemoryTracker, OpenDALConfig, QuotaLayer, QuotaTracker, Scheme};
+use crate::config::OpenDALConfig;
+use crate::util::ReadOnlyLayer;
+use crate::quota::{MemoryTracker, QuotaLayer, QuotaTracker};
 use opendal::raw::*;
 use opendal::{
     Buffer, Builder, Capability, Configurator, EntryMode, Error, ErrorKind, Metadata, Operator,
@@ -102,10 +103,10 @@ pub struct VfsConfig {
 }
 
 impl Configurator for VfsConfig {
-    type Builder = ();
+    type Builder = VfsBuilder;
 
     fn into_builder(self) -> Self::Builder {
-        todo!()
+        VfsBuilder::from_config(self)
     }
 }
 
@@ -156,8 +157,8 @@ impl Builder for VfsBuilder {
             }
 
             let mut op = entry.config.operator()?;
-            if let VfsQuota::Enabled { id, bytes } = entry.quota {
-                op = op.layer(QuotaLayer::new(id.clone(), self.tracker.clone(), bytes));
+            if let VfsQuota::Enabled { id, bytes } = &entry.quota {
+                op = op.layer(QuotaLayer::new(id.clone(), self.tracker.clone(), *bytes));
             }
             if entry.read_only {
                 op = op.layer(ReadOnlyLayer);
@@ -573,7 +574,7 @@ impl oio::Delete for MountDeleter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MemoryConfig, MemoryTracker};
+    use crate::config::{MemoryConfig, Scheme};
     use std::sync::Arc;
 
     fn builder() -> VfsBuilder {
