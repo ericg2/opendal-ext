@@ -33,6 +33,7 @@ services-webdav = ["opendal/services-webdav"]
 services-webhdfs = ["opendal/services-webhdfs"]
 services-yandex-disk = ["opendal/services-yandex-disk"]
 services-sftp = ["opendal/services-sftp"]
+blocking = ["opendal/blocking"]
 
 default = [
     "services-b2",
