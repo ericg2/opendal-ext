@@ -1,7 +1,7 @@
 #![allow(unused_qualifications)]
 
 use crate::retry::RetrySetting;
-use crate::{Throttle, opendal_add};
+use crate::{Throttle, macros::opendal_add};
 use derive_setters::Setters;
 use opendal::Operator;
 use opendal::layers::{ConcurrentLimitLayer, RetryLayer, ThrottleLayer};
@@ -133,6 +133,7 @@ impl OpenDALConfig {
         &self.config
     }
 
+    /// Creates an [`Operator`] from the current config.
     pub fn operator(&self) -> opendal::Result<Operator> {
         let mut op = self.scheme().operator()?;
         let retry = self.retry.get_setting(5);

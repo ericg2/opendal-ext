@@ -50,30 +50,33 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
-use futures_lite::StreamExt;
+use futures_lite::{AsyncReadExt, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use crate::config::OpenDALConfig;
-use crate::util::ReadOnlyLayer;
 use crate::quota::{MemoryTracker, QuotaLayer, QuotaTracker};
+use crate::util::ReadOnlyLayer;
 use opendal::raw::*;
-use opendal::{
-    Buffer, Builder, Capability, Configurator, EntryMode, Error, ErrorKind, Metadata, Operator,
-    Result,
-};
+use opendal::{Buffer, Builder, Capability, Configurator, EntryMode, Error, ErrorKind, Metadata, Operator, Result};
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
+/// Configuration for a VFS Quota.
 #[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Default)]
 pub enum VfsQuota {
+    /// Quota is disabled.
     #[default]
     Disabled,
+    /// Quota is enabled.
     Enabled {
+        /// The ID to use for the [`QuotaTracker`].
         id: String,
+        /// The byte limit for writing.
         bytes: u64,
     },
 }
@@ -83,7 +86,7 @@ pub enum VfsQuota {
 pub struct MountEntry {
     /// Virtual path this mount is bound to, e.g. `"/repos/test"`. Normalized
     /// on insert: always absolute, no trailing slash (except root, which
-    /// can't itself be mounted - see `MountFsBuilder::mount`).
+    /// can't itself be mounted - see [`VfsBuilder::mount`]).
     pub path: String,
     /// Which backend to resolve and mount at `path`.
     pub config: OpenDALConfig,
@@ -99,6 +102,7 @@ pub struct MountEntry {
 /// Serializable configuration for the whole `MountFs` backend.
 #[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct VfsConfig {
+    /// All mounts to use for the VFS.
     pub mounts: Vec<MountEntry>,
 }
 
@@ -128,7 +132,7 @@ fn normalize(path: &str) -> String {
 /// Builder for the `MountFs` backend. Produces a plain `Operator` - there is
 /// intentionally no way to get a bare un-mounted backend out of this, and no
 /// "default operator" fallback.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VfsBuilder {
     tracker: Arc<dyn QuotaTracker>,
     config: VfsConfig,
@@ -246,6 +250,7 @@ impl VfsBuilder {
 // Mount table
 // ---------------------------------------------------------------------------
 
+#[derive(Debug)]
 struct Mount {
     operator: Operator,
     read_only: bool,
@@ -320,6 +325,7 @@ fn virtual_children(mounts: &BTreeMap<String, Mount>, path: &str) -> Option<Vec<
 // ---------------------------------------------------------------------------
 // Access impl
 // ---------------------------------------------------------------------------
+/// Accessor for VFS backend. Initialize via [`VfsBuilder`]!
 pub struct MountAccess {
     mounts: Arc<BTreeMap<String, Mount>>,
 }
@@ -343,7 +349,7 @@ impl MountAccess {
 }
 
 impl Debug for MountAccess {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("MountAccess")
             .field("mounts", &self.mounts.keys().collect::<Vec<_>>())
             .finish()
@@ -404,17 +410,8 @@ impl Access for MountAccess {
         };
 
         let range = args.range();
-        let buf = if range.is_full() {
-            mount.operator.read(&rel).await?
-        } else {
-            mount
-                .operator
-                .read_with(&rel)
-                .range(range.to_range())
-                .await?
-        };
-
-        Ok((RpRead::new(meta), MountReader::new(buf)))
+        let rdr = mount.operator.reader(&rel).await?.into_futures_async_read(range.to_range()).await?;
+        Ok((RpRead::new(meta), MountReader::new(rdr)))
     }
 
     async fn write(&self, path: &str, _args: OpWrite) -> Result<(RpWrite, Self::Writer)> {
@@ -474,26 +471,38 @@ impl Access for MountAccess {
 // Reader / Writer / Lister / Deleter bridges
 // ---------------------------------------------------------------------------
 
-/// Wraps a fully-buffered read. Simpler (and a bit less memory-friendly for
-/// huge objects) than threading a streaming raw reader through every
-/// possible mounted backend's own reader type - trade-off called out
-/// deliberately rather than hidden.
-pub struct MountReader {
-    buf: Option<Buffer>,
-}
+const BUFFER_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
 
-impl MountReader {
-    fn new(buf: Buffer) -> Self {
-        Self { buf: Some(buf) }
-    }
+/// The reader to use for VFS operations. Streaming and lazy-loading.
+#[allow(missing_debug_implementations)]
+pub struct MountReader {
+    inner: opendal::FuturesAsyncReader,
 }
 
 impl oio::Read for MountReader {
     async fn read(&mut self) -> Result<Buffer> {
-        Ok(self.buf.take().unwrap_or_default())
+        let mut buf = vec![0u8; BUFFER_SIZE];
+        let n = self.inner.read(&mut buf).await.map_err(|err| {
+            Error::new(ErrorKind::Unexpected, "mount reader: read failed")
+                .with_operation("MountReader::read")
+                .set_source(err)
+        })?;
+
+        buf.truncate(n);
+        Ok(Buffer::from(buf))
     }
 }
 
+impl MountReader {
+    fn new(inner: opendal::FuturesAsyncReader) -> Self {
+        Self {
+            inner,
+        }
+    }
+}
+
+/// The writer to use for VFS operations.
+#[allow(missing_debug_implementations)]
 pub struct MountWriter {
     inner: opendal::Writer,
 }
@@ -512,14 +521,36 @@ impl oio::Write for MountWriter {
     }
 }
 
+/// The lister for the VFS system.
 pub enum MountLister {
+    /// A real path with an inner [`Lister`].
     Real {
+        /// The OpenDAL [`Lister`] to refer to.
         inner: opendal::Lister,
+        /// The relative path to use.
         mount_path: String,
     },
+    /// A virtual path with fake entries (roots, sub-dirs, etc.)
     Virtual {
+        /// The fake entries to display.
         entries: Vec<oio::Entry>,
     },
+}
+
+impl Debug for MountLister {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MountLister::Real { mount_path, .. } => f
+                .debug_struct("Real")
+                .field("inner", &"<Lister>")
+                .field("mount_path", mount_path)
+                .finish(),
+
+            MountLister::Virtual { entries } => {
+                f.debug_struct("Virtual").field("entries", entries).finish()
+            }
+        }
+    }
 }
 
 impl oio::List for MountLister {
@@ -545,7 +576,9 @@ impl oio::List for MountLister {
 /// Deletes always re-resolve per path, since a single delete batch can span
 /// multiple mounts (or none, which is an error per-entry rather than for
 /// the whole batch).
+#[derive(Debug)]
 pub struct MountDeleter {
+    /// The mounts to use for deleting.
     mounts: Arc<BTreeMap<String, Mount>>,
 }
 
@@ -572,6 +605,7 @@ impl oio::Delete for MountDeleter {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(unused_results)]
 mod tests {
     use super::*;
     use crate::config::{MemoryConfig, Scheme};
@@ -625,8 +659,8 @@ mod tests {
                 .mount("/repos/other", Scheme::Memory(MemoryConfig::default()))
                 .mount("/images", Scheme::Memory(MemoryConfig::default())),
         )
-        .unwrap()
-        .finish();
+            .unwrap()
+            .finish();
 
         let mut names: Vec<String> = op
             .list("/")
@@ -677,8 +711,8 @@ mod tests {
                 .mount("/repos/test", Scheme::Memory(MemoryConfig::default()))
                 .read_only(),
         )
-        .unwrap()
-        .finish();
+            .unwrap()
+            .finish();
 
         let err = op.write("/repos/test/a.txt", "x").await.unwrap_err();
         assert_eq!(err.kind(), ErrorKind::PermissionDenied);
@@ -695,8 +729,8 @@ mod tests {
                 .quota("", 10)
                 .mount("/scratch", Scheme::Memory(MemoryConfig::default())),
         )
-        .unwrap()
-        .finish();
+            .unwrap()
+            .finish();
 
         op.write("/repos/test/a.txt", "0123456789").await.unwrap(); // exactly 10
 
@@ -716,8 +750,8 @@ mod tests {
                 .mount("/repos/test", Scheme::Memory(MemoryConfig::default()))
                 .mount("/scratch", Scheme::Memory(MemoryConfig::default())),
         )
-        .unwrap()
-        .finish();
+            .unwrap()
+            .finish();
 
         op.write("/repos/test/a.txt", "x").await.unwrap();
         op.write("/scratch/b.txt", "y").await.unwrap();

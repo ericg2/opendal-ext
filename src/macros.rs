@@ -1,4 +1,3 @@
-#[macro_export]
 macro_rules! opendal_add {
     (
         $(
@@ -89,6 +88,20 @@ macro_rules! opendal_add {
                             .into_iter()
                             .map(|(k, v)| (k.into(), v.into()))
                             .collect(),
+                    }
+                }
+
+                #[doc = "Returns the backend key for this scheme."]
+                pub fn key(&self) -> String {
+                    match self {
+                        Scheme::Dynamic { backend, .. } => backend.clone(),
+                        $(
+                            #[cfg(feature = $feature)]
+                            Scheme::$variant(_) => {
+                                use heck::ToKebabCase;
+                                stringify!($variant).to_kebab_case()
+                            }
+                        )*
                     }
                 }
 
@@ -248,3 +261,5 @@ macro_rules! opendal_add {
         }
     };
 }
+
+pub(crate) use opendal_add;

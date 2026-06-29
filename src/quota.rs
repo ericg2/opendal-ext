@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -10,15 +11,34 @@ use tokio::sync::Mutex as AsyncMutex;
 use opendal::raw::*;
 use opendal::{Buffer, Error, ErrorKind, Metadata, Result};
 
-/// Persistence for how many bytes have been written under a given quota id.
+/// Persistence backend for tracking bytes written under a quota.
+///
+/// A [`QuotaTracker`] stores the cumulative number of bytes written for each
+/// quota identifier, allowing quota usage to survive process restarts or be
+/// shared across multiple instances.
+///
+/// Implementations may store usage in memory, on disk, in a database, or any
+/// other persistent backing store.
+///
+/// The `id` uniquely identifies a quota bucket. The exact meaning of the ID is
+/// defined by the caller (for example, a user ID, tenant ID, filesystem path,
+/// or mount identifier).
 #[async_trait]
-pub trait QuotaTracker: Send + Sync + 'static {
+pub trait QuotaTracker: Debug + Send + Sync + 'static {
+    /// Returns the total number of bytes recorded for the given quota ID.
+    ///
+    /// If no usage has been recorded yet, implementations should return `0`
+    /// rather than an error.
     async fn get_bytes_written(&self, id: &str) -> Result<u64>;
+
+    /// Stores the total number of bytes written for the given quota ID.
+    ///
+    /// This replaces the previously stored value rather than incrementing it.
     async fn set_bytes_written(&self, id: &str, bytes: u64) -> Result<()>;
 }
 
 /// Simple in-memory tracker for tests.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct MemoryTracker(AsyncMutex<HashMap<String, u64>>);
 
 #[async_trait]
@@ -28,12 +48,13 @@ impl QuotaTracker for MemoryTracker {
     }
 
     async fn set_bytes_written(&self, id: &str, bytes: u64) -> Result<()> {
-        self.0.lock().await.insert(id.to_string(), bytes);
+        let _ = self.0.lock().await.insert(id.to_string(), bytes);
         Ok(())
     }
 }
 
 /// Shared quota state.
+#[derive(Debug)]
 struct QuotaState {
     id: String,
     tracker: Arc<dyn QuotaTracker>,
@@ -93,7 +114,15 @@ impl QuotaState {
     }
 }
 
-/// Global quota layer (dyn-based).
+/// A write-quota [`Layer`] that limits the total number of bytes written.
+///
+/// The quota is identified by a caller-provided ID and is backed by a
+/// [`QuotaTracker`], allowing usage to be persisted across process restarts or
+/// shared between multiple operators.
+///
+/// Cloning a `QuotaLayer` is inexpensive, as all clones share the same
+/// underlying quota state.
+#[derive(Debug)]
 pub struct QuotaLayer {
     state: Arc<QuotaState>,
 }
@@ -107,6 +136,17 @@ impl Clone for QuotaLayer {
 }
 
 impl QuotaLayer {
+    /// Creates a new quota layer.
+    ///
+    /// # Parameters
+    ///
+    /// * `id` - Unique identifier for the quota bucket.
+    /// * `tracker` - Backend used to persist and retrieve quota usage.
+    /// * `limit_bytes` - Maximum number of bytes that may be written before
+    ///   further writes are rejected.
+    ///
+    /// The initial usage is loaded lazily from the [`QuotaTracker`] on the
+    /// first write operation and cached for the lifetime of the layer.
     pub fn new(id: impl Into<String>, tracker: Arc<dyn QuotaTracker>, limit_bytes: u64) -> Self {
         Self {
             state: Arc::new(QuotaState {
@@ -130,13 +170,14 @@ impl<A: Access> Layer<A> for QuotaLayer {
     }
 }
 
+/// The accessor for the quota system.
 pub struct QuotaAccessor<A: Access> {
     inner: A,
     state: Arc<QuotaState>,
 }
 
-impl<A: Access> fmt::Debug for QuotaAccessor<A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<A: Access> Debug for QuotaAccessor<A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("QuotaAccessor")
             .field("id", &self.state.id)
             .field("limit", &self.state.limit)
@@ -174,6 +215,8 @@ impl<A: Access> LayeredAccess for QuotaAccessor<A> {
     }
 }
 
+/// The writer for the quota system.
+#[derive(Debug)]
 pub struct QuotaWriter<W> {
     inner: W,
     state: Arc<QuotaState>,
@@ -222,6 +265,7 @@ impl<W: oio::Write> oio::Write for QuotaWriter<W> {
 }
 
 #[cfg(test)]
+#[allow(unused_results)]
 mod tests {
     use std::sync::Arc;
     use opendal::{Operator, services};

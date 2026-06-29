@@ -7,15 +7,19 @@ use opendal::{Error, ErrorKind};
 
 #[serde_as]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
+/// The retry policy for all calls.
 pub enum RetrySetting {
-    #[default]
+    /// No retry policy set.
     Disabled,
+    #[default]
+    /// Use the default retry policy.
     Default,
+    /// Use a custom policy of # times.
     Count(usize),
 }
 
 impl RetrySetting {
+    /// Retrieves the # of times to retry. Based on `def` default.
     pub fn get_setting(&self, def: usize) -> usize {
         match self {
             RetrySetting::Disabled => 0,
