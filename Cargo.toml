@@ -1,11 +1,12 @@
 [package]
 name = "opendal-ext"
 version = "0.57.0"
-authors = ["Eric Gold"]
+authors = ["Eric E. Gold"]
 edition = "2024"
 license = "Apache-2.0 OR MIT"
 publish = false
 description = "OpenDAL Extension"
+readme = "README.md"
 
 [features]
 services-b2 = ["opendal/services-b2"]
