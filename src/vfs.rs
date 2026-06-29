@@ -60,7 +60,10 @@ use crate::config::OpenDALConfig;
 use crate::quota::{MemoryTracker, QuotaLayer, QuotaTracker};
 use crate::util::ReadOnlyLayer;
 use opendal::raw::*;
-use opendal::{Buffer, Builder, Capability, Configurator, EntryMode, Error, ErrorKind, Metadata, Operator, Result};
+use opendal::{
+    Buffer, Builder, Capability, Configurator, EntryMode, Error, ErrorKind, Metadata, Operator,
+    Result,
+};
 
 // ---------------------------------------------------------------------------
 // Config
@@ -410,7 +413,12 @@ impl Access for MountAccess {
         };
 
         let range = args.range();
-        let rdr = mount.operator.reader(&rel).await?.into_futures_async_read(range.to_range()).await?;
+        let rdr = mount
+            .operator
+            .reader(&rel)
+            .await?
+            .into_futures_async_read(range.to_range())
+            .await?;
         Ok((RpRead::new(meta), MountReader::new(rdr)))
     }
 
@@ -495,9 +503,7 @@ impl oio::Read for MountReader {
 
 impl MountReader {
     fn new(inner: opendal::FuturesAsyncReader) -> Self {
-        Self {
-            inner,
-        }
+        Self { inner }
     }
 }
 
@@ -659,8 +665,8 @@ mod tests {
                 .mount("/repos/other", Scheme::Memory(MemoryConfig::default()))
                 .mount("/images", Scheme::Memory(MemoryConfig::default())),
         )
-            .unwrap()
-            .finish();
+        .unwrap()
+        .finish();
 
         let mut names: Vec<String> = op
             .list("/")
@@ -711,8 +717,8 @@ mod tests {
                 .mount("/repos/test", Scheme::Memory(MemoryConfig::default()))
                 .read_only(),
         )
-            .unwrap()
-            .finish();
+        .unwrap()
+        .finish();
 
         let err = op.write("/repos/test/a.txt", "x").await.unwrap_err();
         assert_eq!(err.kind(), ErrorKind::PermissionDenied);
@@ -729,8 +735,8 @@ mod tests {
                 .quota("", 10)
                 .mount("/scratch", Scheme::Memory(MemoryConfig::default())),
         )
-            .unwrap()
-            .finish();
+        .unwrap()
+        .finish();
 
         op.write("/repos/test/a.txt", "0123456789").await.unwrap(); // exactly 10
 
@@ -750,8 +756,8 @@ mod tests {
                 .mount("/repos/test", Scheme::Memory(MemoryConfig::default()))
                 .mount("/scratch", Scheme::Memory(MemoryConfig::default())),
         )
-            .unwrap()
-            .finish();
+        .unwrap()
+        .finish();
 
         op.write("/repos/test/a.txt", "x").await.unwrap();
         op.write("/scratch/b.txt", "y").await.unwrap();
