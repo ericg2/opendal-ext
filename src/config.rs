@@ -1,3 +1,5 @@
+#![allow(unused_qualifications)]
+
 use crate::retry::RetrySetting;
 use crate::{Throttle, opendal_add};
 use derive_setters::Setters;
@@ -7,33 +9,33 @@ use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 
 opendal_add!(
-    B2:         "services-b2",
-    Ftp:        "services-ftp",
-    Swift:      "services-swift",
-    Azblob:     "services-azblob",
-    Azdls:      "services-azdls",
-    Azfile:     "services-azfile",
-    Cos:        "services-cos",
-    Fs:         "services-fs",
-    Dropbox:    "services-dropbox",
-    Gdrive:     "services-gdrive",
-    Gcs:        "services-gcs",
-    Ghac:       "services-ghac",
-    Http:       "services-http",
-    Ipmfs:      "services-ipmfs",
-    Memory:     "services-memory",
-    Obs:        "services-obs",
-    Onedrive:   "services-onedrive",
-    Oss:        "services-oss",
-    Pcloud:     "services-pcloud",
-    S3:         "services-s3",
-    Webdav:     "services-webdav",
-    Webhdfs:    "services-webhdfs",
-    YandexDisk: "services-yandex-disk",
-    Sftp:       "services-sftp",
+    B2 => opendal::services::B2Config: "services-b2",
+    Ftp => opendal::services::FtpConfig: "services-ftp",
+    Swift => opendal::services::SwiftConfig: "services-swift",
+    Azblob => opendal::services::AzblobConfig: "services-azblob",
+    Azdls => opendal::services::AzdlsConfig: "services-azdls",
+    Azfile => opendal::services::AzfileConfig: "services-azfile",
+    Cos => opendal::services::CosConfig: "services-cos",
+    Fs => opendal::services::FsConfig: "services-fs",
+    Dropbox => opendal::services::DropboxConfig: "services-dropbox",
+    Gdrive => opendal::services::GdriveConfig: "services-gdrive",
+    Gcs => opendal::services::GcsConfig: "services-gcs",
+    Ghac => opendal::services::GhacConfig: "services-ghac",
+    Http => opendal::services::HttpConfig: "services-http",
+    Ipmfs => opendal::services::IpmfsConfig: "services-ipmfs",
+    Memory => opendal::services::MemoryConfig: "services-memory",
+    Obs => opendal::services::ObsConfig: "services-obs",
+    Onedrive => opendal::services::OnedriveConfig: "services-onedrive",
+    Oss => opendal::services::OssConfig: "services-oss",
+    Pcloud => opendal::services::PcloudConfig: "services-pcloud",
+    S3 => opendal::services::S3Config: "services-s3",
+    Webdav => opendal::services::WebdavConfig: "services-webdav",
+    Webhdfs => opendal::services::WebhdfsConfig: "services-webhdfs",
+    YandexDisk => opendal::services::YandexDiskConfig: "services-yandex-disk",
+    Sftp => opendal::services::SftpConfig: "services-sftp",
+    Rustic => rustic_opendal::RusticVfsConfig: "services-rustic"
 );
 
 #[serde_as]

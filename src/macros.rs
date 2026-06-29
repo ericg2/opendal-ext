@@ -1,10 +1,14 @@
 #[macro_export]
 macro_rules! opendal_add {
-    ($($variant:ident : $feature:literal),+ $(,)?) => {
+    (
+        $(
+            $variant:ident => $config:path : $feature:literal
+        ),+ $(,)?
+    ) => {
         paste::paste! {
             $(
                 #[cfg(feature = $feature)]
-                pub use opendal::services::[<$variant Config>];
+                pub use $config;
             )*
 
             // Serde derive intentionally omitted — custom impls below handle the
@@ -46,10 +50,10 @@ macro_rules! opendal_add {
                         "Configuration for the `",
                         stringify!($variant),
                         "` backend.\n\nSee [`",
-                        stringify!([<$variant Config>]),
+                        stringify!($config),
                         "`] for the available options."
                     )]
-                    $variant([<$variant Config>]),
+                    $variant($config),
                 )*
             }
 
@@ -112,18 +116,18 @@ macro_rules! opendal_add {
 
             $(
                 #[cfg(feature = $feature)]
-                impl From<[<$variant Config>]> for Scheme {
-                    fn from(value: [<$variant Config>]) -> Self {
+                impl From<$config> for Scheme {
+                    fn from(value: $config) -> Self {
                         Self::$variant(value)
                     }
                 }
 
                 #[cfg(feature = $feature)]
-                impl From<&[<$variant Config>]> for Scheme
+                impl From<&$config> for Scheme
                 where
-                    [<$variant Config>]: Clone,
+                    $config: Clone,
                 {
-                    fn from(value: &[<$variant Config>]) -> Self {
+                    fn from(value: &$config) -> Self {
                         Self::$variant(value.clone())
                     }
                 }
@@ -218,7 +222,7 @@ macro_rules! opendal_add {
                                 #[cfg(feature = $feature)]
                                 if scheme == to_key(stringify!($variant)) {
                                     use serde::de::IntoDeserializer;
-                                    let cfg: [<$variant Config>] =
+                                    let cfg: $config =
                                         serde::Deserialize::deserialize(
                                             raw_config.into_deserializer()
                                         )
