@@ -1,17 +1,14 @@
 #[warn(missing_docs)]
-mod config;
+
+pub mod quota;
+pub mod config;
+pub mod vfs;
 mod layers;
 mod macros;
-mod quota;
 mod retry;
 mod throttle;
-mod vfs;
 
 pub use {
-    config::*,
-    layers::ReadOnlyLayer,
-    quota::{MemoryTracker, QuotaLayer, QuotaTracker},
     retry::RetrySetting,
     throttle::Throttle,
-    vfs::{VfsConfig, VfsBuilder, VfsQuota}
 };
