@@ -13,4 +13,5 @@ pub use {
     quota::{MemoryTracker, QuotaLayer, QuotaTracker},
     retry::RetrySetting,
     throttle::Throttle,
+    vfs::{VfsConfig, VfsBuilder, VfsQuota}
 };

@@ -67,6 +67,16 @@ use opendal::{
 // Config
 // ---------------------------------------------------------------------------
 
+#[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Default)]
+pub enum VfsQuota {
+    #[default]
+    Disabled,
+    Enabled {
+        id: String,
+        bytes: u64,
+    },
+}
+
 /// Configuration for a single mount point.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MountEntry {
@@ -82,7 +92,7 @@ pub struct MountEntry {
     /// Cap cumulative bytes written to this mount, enforced via
     /// `QuotaLayer`. `None` means unlimited.
     #[serde(default)]
-    pub quota_bytes: Option<u64>,
+    pub quota: VfsQuota,
 }
 
 /// Serializable configuration for the whole `MountFs` backend.
@@ -146,12 +156,8 @@ impl Builder for VfsBuilder {
             }
 
             let mut op = entry.config.operator()?;
-            if let Some(limit) = entry.quota_bytes {
-                op = op.layer(QuotaLayer::new(
-                    entry.path.clone(),
-                    self.tracker.clone(),
-                    limit,
-                ));
+            if let VfsQuota::Enabled { id, bytes } = entry.quota {
+                op = op.layer(QuotaLayer::new(id.clone(), self.tracker.clone(), bytes));
             }
             if entry.read_only {
                 op = op.layer(ReadOnlyLayer);
@@ -210,7 +216,7 @@ impl VfsBuilder {
             path: normalize(&path.into()),
             config: config.into(),
             read_only: false,
-            quota_bytes: None,
+            quota: VfsQuota::Disabled,
         });
         self
     }
@@ -224,9 +230,12 @@ impl VfsBuilder {
     }
 
     /// Cap the most recently added mount's cumulative write quota.
-    pub fn quota(mut self, bytes: u64) -> Self {
+    pub fn quota(mut self, id: impl AsRef<str>, bytes: u64) -> Self {
         if let Some(last) = self.config.mounts.last_mut() {
-            last.quota_bytes = Some(bytes);
+            last.quota = VfsQuota::Enabled {
+                id: id.as_ref().to_string(),
+                bytes,
+            };
         }
         self
     }
@@ -297,7 +306,7 @@ fn virtual_children(mounts: &BTreeMap<String, Mount>, path: &str) -> Option<Vec<
             continue;
         }
         let next_segment = rest.split('/').next().unwrap_or(rest);
-        let _ =children.insert(next_segment.to_string());
+        let _ = children.insert(next_segment.to_string());
     }
 
     if children.is_empty() && normalized != "/" {
@@ -446,9 +455,9 @@ impl Access for MountAccess {
                     .into_iter()
                     .map(|name| {
                         let full = if base == "/" {
-                            format!("{name}/")                                  // "repos/"  — missing leading "/"
+                            format!("{name}/") // "repos/"  — missing leading "/"
                         } else {
-                            format!("{}/{name}/", base.trim_start_matches('/'))  // "repos/test/" — missing leading "/"
+                            format!("{}/{name}/", base.trim_start_matches('/')) // "repos/test/" — missing leading "/"
                         };
                         oio::Entry::new(&full, Metadata::new(EntryMode::DIR))
                     })
@@ -629,7 +638,7 @@ mod tests {
         assert_eq!(names, vec!["images", "repos"]);
 
         let mut repos_children: Vec<String> = op
-            .list("/repos/")          // <-- add trailing slash
+            .list("/repos/") // <-- add trailing slash
             .await
             .unwrap()
             .into_iter()
@@ -682,7 +691,7 @@ mod tests {
         let op = Operator::new(
             builder()
                 .mount("/repos/test", Scheme::Memory(MemoryConfig::default()))
-                .quota(10)
+                .quota("", 10)
                 .mount("/scratch", Scheme::Memory(MemoryConfig::default())),
         )
         .unwrap()
