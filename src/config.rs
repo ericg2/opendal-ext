@@ -106,8 +106,7 @@ impl OpenDALConfig {
             connections,
             throttle,
             retry,
-            config: Scheme::from_iter(scheme.as_ref(), &map)
-                .unwrap_or_else(|| Scheme::dynamic(scheme.as_ref(), map.clone())),
+            config: Scheme::dynamic(scheme.as_ref(), map.clone())
         }
     }
 
