@@ -1,13 +1,10 @@
+
+#[macro_export]
 macro_rules! opendal_add {
-    (
-        $(
-            $variant:ident => $config:path : $feature:literal
-        ),+ $(,)?
-    ) => {
+    ($($variant:ident),+ $(,)?) => {
         paste::paste! {
             $(
-                #[cfg(feature = $feature)]
-                pub use $config;
+                pub use opendal::services::[<$variant Config>];
             )*
 
             // Serde derive intentionally omitted — custom impls below handle the
@@ -29,6 +26,11 @@ macro_rules! opendal_add {
             ///
             /// This enum is marked as `non_exhaustive`, so consumers should include
             /// a wildcard arm (`_`) when matching against it.
+            ///
+            /// # Valid Backends
+            $(
+                #[doc = stringify!($variant)]
+            )*
             pub enum Scheme {
                 /// A dynamic scheme that is unknown.
                 ///
@@ -44,15 +46,14 @@ macro_rules! opendal_add {
                     config: std::collections::HashMap<String, String>,
                 },
                 $(
-                    #[cfg(feature = $feature)]
-                    #[doc = concat!(
+                   #[doc = concat!(
                         "Configuration for the `",
                         stringify!($variant),
                         "` backend.\n\nSee [`",
-                        stringify!($config),
+                        stringify!([<$variant Config>]),
                         "`] for the available options."
-                    )]
-                    $variant($config),
+                   )]
+                   $variant([<$variant Config>]),
                 )*
             }
 
@@ -69,30 +70,6 @@ macro_rules! opendal_add {
                         backend: String::new(),
                         config: HashMap::new()
                     }
-                }
-            }
-
-            impl Scheme {
-                #[doc = "Attempts to build a Scheme variant from a map."]
-                pub fn from_iter(
-                    scheme: &str,
-                    map: &std::collections::HashMap<String, String>,
-                ) -> Option<Self> {
-                    use serde::de::IntoDeserializer;
-                    $(
-                        #[cfg(feature = $feature)]
-                        {
-                            use heck::ToKebabCase;
-                            if scheme == stringify!($variant).to_kebab_case() {
-                                // reuse the same serde_value-based path your Deserialize impl uses
-                                let value = serde_value::to_value(map).ok()?;
-                                if let Ok(cfg) = <$config as serde::Deserialize>::deserialize(value.into_deserializer()) {
-                                    return Some(Scheme::$variant(cfg));
-                                }
-                            }
-                        }
-                    )*
-                    None
                 }
             }
 
@@ -115,16 +92,11 @@ macro_rules! opendal_add {
                     }
                 }
 
-                #[doc = "Returns the backend key for this scheme."]
-                pub fn key(&self) -> String {
+                pub(crate) fn key(&self) -> Option<String> {
                     match self {
-                        Scheme::Dynamic { backend, .. } => backend.clone(),
+                        Scheme::Dynamic { backend, .. } => Some(backend.clone()),
                         $(
-                            #[cfg(feature = $feature)]
-                            Scheme::$variant(_) => {
-                                use heck::ToKebabCase;
-                                stringify!($variant).to_kebab_case()
-                            }
+                            Scheme::$variant(_) => Some(stringify!($variant).to_string()),
                         )*
                     }
                 }
@@ -139,7 +111,6 @@ macro_rules! opendal_add {
                             )
                         }
                         $(
-                            #[cfg(feature = $feature)]
                             Scheme::$variant(cfg) => {
                                 Ok(
                                     opendal::Operator::from_config(cfg.clone())?
@@ -152,19 +123,17 @@ macro_rules! opendal_add {
             }
 
             $(
-                #[cfg(feature = $feature)]
-                impl From<$config> for Scheme {
-                    fn from(value: $config) -> Self {
+                impl From<[<$variant Config>]> for Scheme {
+                    fn from(value: [<$variant Config>]) -> Self {
                         Self::$variant(value)
                     }
                 }
 
-                #[cfg(feature = $feature)]
-                impl From<&$config> for Scheme
+                impl From<&[<$variant Config>]> for Scheme
                 where
-                    $config: Clone,
+                    [<$variant Config>]: Clone,
                 {
-                    fn from(value: &$config) -> Self {
+                    fn from(value: &[<$variant Config>]) -> Self {
                         Self::$variant(value.clone())
                     }
                 }
@@ -191,7 +160,6 @@ macro_rules! opendal_add {
                             map.serialize_entry("config", config)?;
                         }
                         $(
-                            #[cfg(feature = $feature)]
                             Scheme::$variant(cfg) => {
                                 map.serialize_entry("scheme", &to_key(stringify!($variant)))?;
                                 map.serialize_entry("config", cfg)?;
@@ -256,10 +224,9 @@ macro_rules! opendal_add {
                             })?;
 
                             $(
-                                #[cfg(feature = $feature)]
                                 if scheme == to_key(stringify!($variant)) {
                                     use serde::de::IntoDeserializer;
-                                    let cfg: $config =
+                                    let cfg: [<$variant Config>] =
                                         serde::Deserialize::deserialize(
                                             raw_config.into_deserializer()
                                         )

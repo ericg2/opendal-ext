@@ -10,31 +10,16 @@ use serde_with::{DisplayFromStr, serde_as};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
+#[cfg(windows)]
 opendal_add!(
-    B2 => opendal::services::B2Config: "services-b2",
-    Ftp => opendal::services::FtpConfig: "services-ftp",
-    Swift => opendal::services::SwiftConfig: "services-swift",
-    Azblob => opendal::services::AzblobConfig: "services-azblob",
-    Azdls => opendal::services::AzdlsConfig: "services-azdls",
-    Azfile => opendal::services::AzfileConfig: "services-azfile",
-    Cos => opendal::services::CosConfig: "services-cos",
-    Fs => opendal::services::FsConfig: "services-fs",
-    Dropbox => opendal::services::DropboxConfig: "services-dropbox",
-    Gdrive => opendal::services::GdriveConfig: "services-gdrive",
-    Gcs => opendal::services::GcsConfig: "services-gcs",
-    Ghac => opendal::services::GhacConfig: "services-ghac",
-    Http => opendal::services::HttpConfig: "services-http",
-    Ipmfs => opendal::services::IpmfsConfig: "services-ipmfs",
-    Memory => opendal::services::MemoryConfig: "services-memory",
-    Obs => opendal::services::ObsConfig: "services-obs",
-    Onedrive => opendal::services::OnedriveConfig: "services-onedrive",
-    Oss => opendal::services::OssConfig: "services-oss",
-    Pcloud => opendal::services::PcloudConfig: "services-pcloud",
-    S3 => opendal::services::S3Config: "services-s3",
-    Webdav => opendal::services::WebdavConfig: "services-webdav",
-    Webhdfs => opendal::services::WebhdfsConfig: "services-webhdfs",
-    YandexDisk => opendal::services::YandexDiskConfig: "services-yandex-disk",
-    Sftp => opendal::services::SftpConfig: "services-sftp",
+    B2, Ftp, Swift, Azblob, Azdls, Azfile, Cos, Fs, Dropbox, Gdrive, Gcs, Ghac, Http, Ipmfs,
+    Memory, Obs, Onedrive, Oss, Pcloud, S3, Webdav, Webhdfs, YandexDisk
+);
+
+#[cfg(not(windows))]
+opendal_add!(
+    B2, Ftp, Swift, Azblob, Azdls, Azfile, Cos, Fs, Dropbox, Gdrive, Gcs, Ghac, Http, Ipmfs,
+    Memory, Obs, Onedrive, Oss, Pcloud, S3, Webdav, Webhdfs, YandexDisk, Sftp
 );
 
 #[serde_as]
