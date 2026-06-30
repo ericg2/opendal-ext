@@ -92,6 +92,7 @@ macro_rules! opendal_add {
                     }
                 }
 
+                #[doc = "Attempts to get the key for the Scheme."]
                 pub fn key(&self) -> Option<String> {
                     match self {
                         Scheme::Dynamic { backend, .. } => Some(backend.clone()),
