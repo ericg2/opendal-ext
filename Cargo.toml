@@ -69,7 +69,7 @@ opendal = {
         "layers-retry",
         "layers-concurrent-limit",
         "layers-throttle",
-        "layers-logging"
+        "layers-logging",
     ]
 }
 

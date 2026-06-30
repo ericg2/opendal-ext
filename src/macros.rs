@@ -73,6 +73,30 @@ macro_rules! opendal_add {
             }
 
             impl Scheme {
+                #[doc = "Attempts to build a Scheme variant from a map."]
+                pub fn from_iter(
+                    scheme: &str,
+                    map: &std::collections::HashMap<String, String>,
+                ) -> Option<Self> {
+                    use serde::de::IntoDeserializer;
+                    $(
+                        #[cfg(feature = $feature)]
+                        {
+                            use heck::ToKebabCase;
+                            if scheme == stringify!($variant).to_kebab_case() {
+                                // reuse the same serde_value-based path your Deserialize impl uses
+                                let value = serde_value::to_value(map).ok()?;
+                                if let Ok(cfg) = <$config as serde::Deserialize>::deserialize(value.into_deserializer()) {
+                                    return Some(Scheme::$variant(cfg));
+                                }
+                            }
+                        }
+                    )*
+                    None
+                }
+            }
+
+            impl Scheme {
                 pub(crate) fn dynamic<T, K, V>(
                     scheme: impl AsRef<str>,
                     value: T,
