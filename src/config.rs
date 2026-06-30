@@ -35,7 +35,6 @@ opendal_add!(
     Webhdfs => opendal::services::WebhdfsConfig: "services-webhdfs",
     YandexDisk => opendal::services::YandexDiskConfig: "services-yandex-disk",
     Sftp => opendal::services::SftpConfig: "services-sftp",
-    Rustic => crate::rustic_config::RusticVfsConfig: "services-rustic"
 );
 
 #[serde_as]

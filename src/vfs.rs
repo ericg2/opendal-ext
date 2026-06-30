@@ -1,52 +1,7 @@
 //! `MountFs` — a custom OpenDAL [`Access`] backend that mounts other
 //! operators onto fixed virtual paths, the way you'd mount filesystems onto
 //! directories on a Unix box.
-//!
-//! Unlike `RouteLayer`, this is **not** a `Layer` wrapping some "default"
-//! operator — there is no default. It is a standalone backend: you give a
-//! `MountFsBuilder` a list of mounts, call `.build()`, and get back a plain
-//! `Operator`. Internally:
-//!
-//! - Listing a path that isn't inside any mount (e.g. `/`, or `/repos` when
-//!   you've mounted `/repos/test`) synthesizes a virtual directory listing
-//!   out of the configured mount paths. There is no real backend behind
-//!   these paths — they exist only because some mount lives underneath them.
-//! - Listing/stat/read/write/delete/etc. against a path that *is* inside a
-//!   mount gets forwarded to that mount's operator, with the path rebased
-//!   so the mount root becomes `"/"`. E.g. if `/repos/test` is mounted and
-//!   you call `create_dir("/repos/test/abc/")`, the backend calls
-//!   `create_dir("abc/")` on the mounted operator.
-//! - Paths that fall under no mount and aren't an ancestor of one are
-//!   `NotFound`.
-//!
-//! Per-mount config supports:
-//! - `read_only`: every write/create_dir/delete/rename/copy against that
-//!   mount is rejected with `PermissionDenied`. Implemented with a tiny
-//!   internal `ReadOnlyLayer`, applied only to that mount's operator.
-//! - `quota_bytes`: cumulative bytes written to that mount are capped,
-//!   enforced by wrapping that mount's operator with the existing
-//!   `QuotaLayer` (using the mount's path as the quota id).
-//!
-//! ```ignore
-//! use std::sync::Arc;
-//! use crate::mount_fs::MountFsBuilder;
-//! use crate::quota_layer::QuotaTracker;
-//!
-//! # async fn run(tracker: Arc<impl QuotaTracker>) -> opendal::Result<()> {
-//! let op = MountFsBuilder::new(tracker)
-//!     .mount("/repos/test", my_namespace::Scheme::Fs(/* ... */))
-//!     .mount("/repos/readonly-mirror", my_namespace::Scheme::S3(/* ... */))
-//!         .read_only()
-//!     .mount("/scratch", my_namespace::Scheme::Memory)
-//!         .quota(64 * 1024 * 1024)
-//!     .build()?;
-//!
-//! op.create_dir("/repos/test/abc/").await?;     // -> create_dir("abc/") on the fs mount
-//! op.list("/repos/").await?;                    // -> ["test/", "readonly-mirror/"] (virtual)
-//! op.write("/repos/readonly-mirror/x", "y").await.unwrap_err(); // PermissionDenied
-//! # Ok(())
-//! # }
-//! ```
+//! ...
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -72,40 +27,32 @@ use opendal::{
 /// Configuration for a VFS Quota.
 #[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Default)]
 pub enum VfsQuota {
-    /// Quota is disabled.
     #[default]
     Disabled,
-    /// Quota is enabled.
     Enabled {
-        /// The ID to use for the [`QuotaTracker`].
         id: String,
-        /// The byte limit for writing.
         bytes: u64,
     },
 }
 
-/// Configuration for a single mount point.
+/// Configuration for a single mount point (serializable form).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MountEntry {
-    /// Virtual path this mount is bound to, e.g. `"/repos/test"`. Normalized
-    /// on insert: always absolute, no trailing slash (except root, which
-    /// can't itself be mounted - see [`VfsBuilder::mount`]).
     pub path: String,
-    /// Which backend to resolve and mount at `path`.
     pub config: OpenDALConfig,
-    /// Reject all writes/deletes/create_dir/rename/copy against this mount.
     #[serde(default)]
     pub read_only: bool,
-    /// Cap cumulative bytes written to this mount, enforced via
-    /// `QuotaLayer`. `None` means unlimited.
     #[serde(default)]
     pub quota: VfsQuota,
 }
 
 /// Serializable configuration for the whole `MountFs` backend.
+///
+/// Note: mounts added via [`VfsBuilder::mount_operator`] are **not**
+/// representable here and will be absent if you try to serialise a builder
+/// that used that path.
 #[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct VfsConfig {
-    /// All mounts to use for the VFS.
     pub mounts: Vec<MountEntry>,
 }
 
@@ -117,8 +64,6 @@ impl Configurator for VfsConfig {
     }
 }
 
-/// Normalize a virtual mount path: absolute, no trailing slash, `/`
-/// collapsed to itself.
 fn normalize(path: &str) -> String {
     let trimmed = path.trim_matches('/');
     if trimmed.is_empty() {
@@ -129,24 +74,56 @@ fn normalize(path: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Builder
+// Builder internals
 // ---------------------------------------------------------------------------
 
-/// Builder for the `MountFs` backend. Produces a plain `Operator` - there is
-/// intentionally no way to get a bare un-mounted backend out of this, and no
-/// "default operator" fallback.
-#[derive(Clone, Debug)]
+/// Where a pending mount's operator comes from.
+///
+/// `Config` is the serialisable path (resolved lazily in `build()`).
+/// `Operator` accepts a pre-built [`Operator`] — useful when you need to
+/// avoid a circular dependency between the caller and `OpenDALConfig`.
+/// Because [`Operator`] is not `Serialize`, a builder that contains any
+/// `Operator`-sourced mounts cannot round-trip through [`VfsConfig`].
+enum MountSource {
+    Config(OpenDALConfig),
+    /// A caller-supplied, already-constructed operator.
+    Operator(Operator),
+}
+
+/// A not-yet-built mount, held inside [`VfsBuilder`].
+struct PendingMount {
+    path: String,
+    source: MountSource,
+    read_only: bool,
+    quota: VfsQuota,
+}
+
+// ---------------------------------------------------------------------------
+// Builder (public)
+// ---------------------------------------------------------------------------
+
+/// Builder for the `MountFs` backend.
 pub struct VfsBuilder {
     tracker: Arc<dyn QuotaTracker>,
-    config: VfsConfig,
+    pending: Vec<PendingMount>,
 }
 
 impl Default for VfsBuilder {
     fn default() -> Self {
         Self {
             tracker: Arc::new(MemoryTracker::default()),
-            config: VfsConfig::default(),
+            pending: Vec::new(),
         }
+    }
+}
+
+impl Debug for VfsBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // We can't easily print MountSource::Operator, so just show paths.
+        let paths: Vec<&str> = self.pending.iter().map(|m| m.path.as_str()).collect();
+        f.debug_struct("VfsBuilder")
+            .field("mounts", &paths)
+            .finish()
     }
 }
 
@@ -155,34 +132,42 @@ impl Builder for VfsBuilder {
 
     fn build(self) -> Result<impl Access> {
         let mut mounts = BTreeMap::new();
-        for entry in &self.config.mounts {
-            if entry.path == "/" {
+
+        for pending in self.pending {
+            if pending.path == "/" {
                 return Err(Error::new(
                     ErrorKind::ConfigInvalid,
                     "cannot mount at the virtual root '/'",
                 ));
             }
 
-            let mut op = entry.config.operator()?;
-            if let VfsQuota::Enabled { id, bytes } = &entry.quota {
+            // Resolve the operator from whichever source was supplied.
+            let mut op = match pending.source {
+                MountSource::Config(cfg) => cfg.operator()?,
+                MountSource::Operator(op) => op,
+            };
+
+            if let VfsQuota::Enabled { id, bytes } = &pending.quota {
                 op = op.layer(QuotaLayer::new(id.clone(), self.tracker.clone(), *bytes));
             }
-            if entry.read_only {
+            if pending.read_only {
                 op = op.layer(ReadOnlyLayer);
             }
 
             if mounts
                 .insert(
-                    entry.path.clone(),
+                    pending.path.clone(),
                     Mount {
                         operator: op,
-                        read_only: entry.read_only,
+                        read_only: pending.read_only,
                     },
                 )
                 .is_some()
             {
-                return Err(Error::new(ErrorKind::ConfigInvalid, "duplicate mount path")
-                    .with_context("path", entry.path.clone()));
+                return Err(
+                    Error::new(ErrorKind::ConfigInvalid, "duplicate mount path")
+                        .with_context("path", pending.path),
+                );
             }
         }
 
@@ -193,45 +178,78 @@ impl Builder for VfsBuilder {
 }
 
 impl VfsBuilder {
-    /// Start an empty builder. `tracker` backs every mount's quota (if any)
-    /// - one tracker instance shared across mounts, keyed by mount path.
+    /// Start an empty builder.
     pub fn new(tracker: Arc<impl QuotaTracker>) -> Self {
         Self {
-            config: VfsConfig::default(),
             tracker,
+            pending: Vec::new(),
         }
     }
 
-    /// Build from a config you already have (e.g. loaded from disk/DB).
+    /// Build from a serialisable [`VfsConfig`] (e.g. loaded from disk/DB).
+    /// All mounts are treated as `MountSource::Config`.
     pub fn from_config(config: VfsConfig) -> Self {
+        let pending = config
+            .mounts
+            .into_iter()
+            .map(|e| PendingMount {
+                path: e.path,
+                source: MountSource::Config(e.config),
+                read_only: e.read_only,
+                quota: e.quota,
+            })
+            .collect();
+
         Self {
-            config,
+            pending,
             ..Default::default()
         }
     }
 
-    /// Sets the [`QuotaTracker`] for this builder.
+    /// Override the [`QuotaTracker`] (useful after [`from_config`]).
     pub fn with_tracker(mut self, tracker: Arc<impl QuotaTracker>) -> Self {
         self.tracker = tracker;
         self
     }
 
-    /// Mount `scheme` at `path`. Mounting at `/` itself is rejected at
-    /// `build()` time - there has to be at least one real path segment, or
-    /// "mounting a sub-folder" doesn't mean anything.
+    /// Mount a backend described by an [`OpenDALConfig`] (or anything that
+    /// converts into one, such as your `Scheme` type) at `path`.
+    ///
+    /// Chain `.read_only()` / `.quota(id, bytes)` immediately after to
+    /// configure the mount just added.
     pub fn mount(mut self, path: impl Into<String>, config: impl Into<OpenDALConfig>) -> Self {
-        self.config.mounts.push(MountEntry {
+        self.pending.push(PendingMount {
             path: normalize(&path.into()),
-            config: config.into(),
+            source: MountSource::Config(config.into()),
             read_only: false,
             quota: VfsQuota::Disabled,
         });
         self
     }
 
-    /// Mark the most recently added mount read-only.
+    /// Mount a pre-built [`Operator`] at `path`.
+    ///
+    /// This is the escape hatch for cases where constructing an
+    /// [`OpenDALConfig`] would create a circular dependency. The operator is
+    /// used as-is; `QuotaLayer` / `ReadOnlyLayer` are still applied on top
+    /// if you chain `.quota()` / `.read_only()`.
+    ///
+    /// Because [`Operator`] is not `Serialize`, a [`VfsConfig`] snapshot of
+    /// this builder will **not** include mounts added through this method.
+    pub fn mount_operator(mut self, path: impl Into<String>, operator: Operator) -> Self {
+        self.pending.push(PendingMount {
+            path: normalize(&path.into()),
+            source: MountSource::Operator(operator),
+            read_only: false,
+            quota: VfsQuota::Disabled,
+        });
+        self
+    }
+
+    /// Mark the most recently added mount (via either `mount` or
+    /// `mount_operator`) as read-only.
     pub fn read_only(mut self) -> Self {
-        if let Some(last) = self.config.mounts.last_mut() {
+        if let Some(last) = self.pending.last_mut() {
             last.read_only = true;
         }
         self
@@ -239,7 +257,7 @@ impl VfsBuilder {
 
     /// Cap the most recently added mount's cumulative write quota.
     pub fn quota(mut self, id: impl AsRef<str>, bytes: u64) -> Self {
-        if let Some(last) = self.config.mounts.last_mut() {
+        if let Some(last) = self.pending.last_mut() {
             last.quota = VfsQuota::Enabled {
                 id: id.as_ref().to_string(),
                 bytes,
@@ -248,6 +266,7 @@ impl VfsBuilder {
         self
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // Mount table
