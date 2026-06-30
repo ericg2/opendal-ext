@@ -92,7 +92,7 @@ macro_rules! opendal_add {
                     }
                 }
 
-                pub(crate) fn key(&self) -> Option<String> {
+                pub fn key(&self) -> Option<String> {
                     match self {
                         Scheme::Dynamic { backend, .. } => Some(backend.clone()),
                         $(
