@@ -9,6 +9,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use futures_lite::{AsyncReadExt, StreamExt};
+use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::config::OpenDALConfig;
@@ -463,6 +464,7 @@ impl Access for MountAccess {
 
     async fn list(&self, path: &str, _args: OpList) -> Result<(RpList, Self::Lister)> {
         if let Some((mount_path, mount, rel)) = resolve(&self.mounts, path) {
+            debug!("LIST {path} to {}", &rel);
             let lister = mount.operator.lister(&rel).await?;
             return Ok((
                 RpList::default(),
