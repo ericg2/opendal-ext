@@ -60,7 +60,7 @@ throttle = ["opendal/layers-throttle"]
 full = [
     "b2", "ftp", "swift", "azblob", "azdls", "azfile", "cos", "fs", "dropbox",
     "gdrive", "gcs", "ghac", "http", "ipmfs", "obs", "onedrive", "oss", "pcloud",
-    "s3", "webdav", "webhdfs", "yandex-disk", "sftp", "throttle",
+    "s3", "webdav", "webhdfs", "yandex-disk", "throttle",
 ]
 
 [dev-dependencies]
