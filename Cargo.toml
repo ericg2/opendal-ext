@@ -10,6 +10,7 @@ readme = "README.md"
 
 [dependencies]
 humantime-serde = "1"
+opendal = { version = "0.57.0", default-features = false, features = ["blocking", "layers-logging", "layers-retry", "layers-throttle", "layers-concurrent-limit"] }
 strum = { version = "0.28.0", features = ["derive"] }
 serde_with = { version = "3", features = ["base64"] }
 bytesize = { version = "2", features = ["serde"] }
@@ -25,72 +26,42 @@ tokio = { version = "1.52", features = ["sync"] }
 log = "0.4.33"
 
 [target.'cfg(not(windows))'.dependencies]
-# opendal backend
-# - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
-opendal = {
-    version = "0.57.0",
-    features = [
-        "blocking",
-        "services-b2",
-        "services-ftp",
-        "services-sftp",
-        "services-swift",
-        "services-azblob",
-        "services-azdls",
-        "services-cos",
-        "services-fs",
-        "services-dropbox",
-        "services-gdrive",
-        "services-gcs",
-        "services-ghac",
-        "services-http",
-        "services-ipmfs",
-        "services-memory",
-        "services-obs",
-        "services-onedrive",
-        "services-oss",
-        "services-pcloud",
-        "services-s3",
-        "services-webdav",
-        "services-webhdfs",
-        "services-azfile",
-        "services-yandex-disk",
-        "layers-throttle",
-    ]
-}
+# sftp only exists on non-windows; leave as its own line, gated by our "sftp" feature too
 
-[target.'cfg(windows)'.dependencies]
-# opendal backend
-opendal = {
-    version = "0.57.0",
-    features = [
-        "blocking",
-        "services-b2",
-        "services-ftp",
-        "services-swift",
-        "services-azblob",
-        "services-azdls",
-        "services-cos",
-        "services-fs",
-        "services-dropbox",
-        "services-gdrive",
-        "services-gcs",
-        "services-ghac",
-        "services-http",
-        "services-ipmfs",
-        "services-memory",
-        "services-obs",
-        "services-onedrive",
-        "services-oss",
-        "services-pcloud",
-        "services-s3",
-        "services-webdav",
-        "services-webhdfs",
-        "services-azfile",
-        "layers-throttle",
-        "services-yandex-disk"
-    ]
-}
+[features]
+default = ["memory"]
+memory = ["opendal/services-memory"]
+b2 = ["opendal/services-b2"]
+ftp = ["opendal/services-ftp"]
+swift = ["opendal/services-swift"]
+azblob = ["opendal/services-azblob"]
+azdls = ["opendal/services-azdls"]
+azfile = ["opendal/services-azfile"]
+cos = ["opendal/services-cos"]
+fs = ["opendal/services-fs"]
+dropbox = ["opendal/services-dropbox"]
+gdrive = ["opendal/services-gdrive"]
+gcs = ["opendal/services-gcs"]
+ghac = ["opendal/services-ghac"]
+http = ["opendal/services-http"]
+ipmfs = ["opendal/services-ipmfs"]
+obs = ["opendal/services-obs"]
+onedrive = ["opendal/services-onedrive"]
+oss = ["opendal/services-oss"]
+pcloud = ["opendal/services-pcloud"]
+s3 = ["opendal/services-s3"]
+webdav = ["opendal/services-webdav"]
+webhdfs = ["opendal/services-webhdfs"]
+yandex-disk = ["opendal/services-yandex-disk"]
+sftp = ["opendal/services-sftp"]           # non-windows only
+
+throttle = ["opendal/layers-throttle"]
+
+full = [
+    "b2", "ftp", "swift", "azblob", "azdls", "azfile", "cos", "fs", "dropbox",
+    "gdrive", "gcs", "ghac", "http", "ipmfs", "obs", "onedrive", "oss", "pcloud",
+    "s3", "webdav", "webhdfs", "yandex-disk", "sftp", "throttle",
+]
 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full"] }

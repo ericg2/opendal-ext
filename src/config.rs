@@ -10,16 +10,34 @@ use serde_with::{DisplayFromStr, serde_as};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-#[cfg(windows)]
-opendal_add!(
-    B2, Ftp, Swift, Azblob, Azdls, Azfile, Cos, Fs, Dropbox, Gdrive, Gcs, Ghac, Http, Ipmfs,
-    Memory, Obs, Onedrive, Oss, Pcloud, S3, Webdav, Webhdfs, YandexDisk
-);
+#[cfg(all(feature = "sftp", windows))]
+compile_error!("sftp service is not supported on windows");
 
-#[cfg(not(windows))]
 opendal_add!(
-    B2, Ftp, Swift, Azblob, Azdls, Azfile, Cos, Fs, Dropbox, Gdrive, Gcs, Ghac, Http, Ipmfs,
-    Memory, Obs, Onedrive, Oss, Pcloud, S3, Webdav, Webhdfs, YandexDisk, Sftp
+    B2 => "b2",
+    Ftp => "ftp",
+    Swift => "swift",
+    Azblob => "azblob",
+    Azdls => "azdls",
+    Azfile => "azfile",
+    Cos => "cos",
+    Fs => "fs",
+    Dropbox => "dropbox",
+    Gdrive => "gdrive",
+    Gcs => "gcs",
+    Ghac => "ghac",
+    Http => "http",
+    Ipmfs => "ipmfs",
+    Memory => "memory",
+    Obs => "obs",
+    Onedrive => "onedrive",
+    Oss => "oss",
+    Pcloud => "pcloud",
+    S3 => "s3",
+    Webdav => "webdav",
+    Webhdfs => "webhdfs",
+    YandexDisk => "yandex-disk",
+    Sftp => "sftp",
 );
 
 #[serde_as]

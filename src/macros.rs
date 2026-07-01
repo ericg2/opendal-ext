@@ -1,59 +1,23 @@
-
 #[macro_export]
 macro_rules! opendal_add {
-    ($($variant:ident),+ $(,)?) => {
+    ($($variant:ident => $feature:literal),+ $(,)?) => {
         paste::paste! {
             $(
+                #[cfg(feature = $feature)]
                 pub use opendal::services::[<$variant Config>];
             )*
 
-            // Serde derive intentionally omitted — custom impls below handle the
-            // flat-key format where Dynamic uses `backend` as the key directly,
-            // identical to how typed variants emit their kebab-case name.
-            #[derive(
-                Debug,
-                Clone,
-                Eq,
-                PartialEq,
-                strum::AsRefStr,
-            )]
+            #[derive(Debug, Clone, Eq, PartialEq, strum::AsRefStr)]
             #[non_exhaustive]
             /// Configuration scheme for a repository backend.
-            ///
-            /// This enum provides strongly typed configuration for known backends,
-            /// while still allowing unknown or externally defined backends to be
-            /// represented through [`Scheme::Dynamic`].
-            ///
-            /// This enum is marked as `non_exhaustive`, so consumers should include
-            /// a wildcard arm (`_`) when matching against it.
-            ///
-            /// # Valid Backends
-            $(
-                #[doc = stringify!($variant)]
-            )*
             pub enum Scheme {
-                /// A dynamic scheme that is unknown.
-                ///
-                /// This variant can be used for backends that are not known at
-                /// compile time. The backend name identifies the implementation,
-                /// and the configuration map contains backend-specific key/value
-                /// settings.
                 Dynamic {
-                    /// The backend identifier.
                     backend: String,
-
-                    /// Backend-specific configuration values.
                     config: std::collections::HashMap<String, String>,
                 },
                 $(
-                   #[doc = concat!(
-                        "Configuration for the `",
-                        stringify!($variant),
-                        "` backend.\n\nSee [`",
-                        stringify!([<$variant Config>]),
-                        "`] for the available options."
-                   )]
-                   $variant([<$variant Config>]),
+                    #[cfg(feature = $feature)]
+                    $variant([<$variant Config>]),
                 )*
             }
 
@@ -66,18 +30,12 @@ macro_rules! opendal_add {
 
             impl Default for Scheme {
                 fn default() -> Self {
-                    Self::Dynamic {
-                        backend: String::new(),
-                        config: HashMap::new()
-                    }
+                    Self::Dynamic { backend: String::new(), config: HashMap::new() }
                 }
             }
 
             impl Scheme {
-                pub(crate) fn dynamic<T, K, V>(
-                    scheme: impl AsRef<str>,
-                    value: T,
-                ) -> Self
+                pub(crate) fn dynamic<T, K, V>(scheme: impl AsRef<str>, value: T) -> Self
                 where
                     T: IntoIterator<Item = (K, V)>,
                     K: Into<String>,
@@ -85,38 +43,29 @@ macro_rules! opendal_add {
                 {
                     Self::Dynamic {
                         backend: scheme.as_ref().to_string(),
-                        config: value
-                            .into_iter()
-                            .map(|(k, v)| (k.into(), v.into()))
-                            .collect(),
+                        config: value.into_iter().map(|(k, v)| (k.into(), v.into())).collect(),
                     }
                 }
 
-                #[doc = "Attempts to get the key for the Scheme."]
                 pub fn key(&self) -> Option<String> {
                     match self {
                         Scheme::Dynamic { backend, .. } => Some(backend.clone()),
                         $(
+                            #[cfg(feature = $feature)]
                             Scheme::$variant(_) => Some(stringify!($variant).to_string()),
                         )*
                     }
                 }
 
-                #[doc = "Attempts to create an Operator based on the Scheme."]
                 pub fn operator(&self) -> opendal::Result<opendal::Operator> {
                     match self {
                         Scheme::Dynamic { backend, config } => {
-                            opendal::Operator::via_iter(
-                                backend.clone(),
-                                config.clone(),
-                            )
+                            opendal::Operator::via_iter(backend.clone(), config.clone())
                         }
                         $(
+                            #[cfg(feature = $feature)]
                             Scheme::$variant(cfg) => {
-                                Ok(
-                                    opendal::Operator::from_config(cfg.clone())?
-                                        .finish()
-                                )
+                                Ok(opendal::Operator::from_config(cfg.clone())?.finish())
                             }
                         )*
                     }
@@ -124,35 +73,21 @@ macro_rules! opendal_add {
             }
 
             $(
+                #[cfg(feature = $feature)]
                 impl From<[<$variant Config>]> for Scheme {
-                    fn from(value: [<$variant Config>]) -> Self {
-                        Self::$variant(value)
-                    }
+                    fn from(value: [<$variant Config>]) -> Self { Self::$variant(value) }
                 }
 
-                impl From<&[<$variant Config>]> for Scheme
-                where
-                    [<$variant Config>]: Clone,
-                {
-                    fn from(value: &[<$variant Config>]) -> Self {
-                        Self::$variant(value.clone())
-                    }
+                #[cfg(feature = $feature)]
+                impl From<&[<$variant Config>]> for Scheme {
+                    fn from(value: &[<$variant Config>]) -> Self { Self::$variant(value.clone()) }
                 }
             )*
 
-            // Serialize as {"scheme": "<key>", "config": <cfg>} — two explicit flat fields.
-            // Works identically for typed variants and Dynamic.
             impl serde::Serialize for Scheme {
-                fn serialize<S: serde::Serializer>(
-                    &self,
-                    serializer: S,
-                ) -> Result<S::Ok, S::Error> {
+                fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                     use serde::ser::SerializeMap;
-
-                    fn to_key(s: &str) -> String {
-                        use heck::ToKebabCase;
-                        s.to_kebab_case()
-                    }
+                    fn to_key(s: &str) -> String { use heck::ToKebabCase; s.to_kebab_case() }
 
                     let mut map = serializer.serialize_map(Some(2))?;
                     match self {
@@ -161,6 +96,7 @@ macro_rules! opendal_add {
                             map.serialize_entry("config", config)?;
                         }
                         $(
+                            #[cfg(feature = $feature)]
                             Scheme::$variant(cfg) => {
                                 map.serialize_entry("scheme", &to_key(stringify!($variant)))?;
                                 map.serialize_entry("config", cfg)?;
@@ -171,78 +107,46 @@ macro_rules! opendal_add {
                 }
             }
 
-            // Deserialize from {"scheme": "<key>", "config": <cfg>}.
-            // `config` is buffered as serde_value::Value so the buffer is
-            // format-agnostic — no JSON roundtrip, works with TOML, YAML, etc.
-            // `scheme` and `config` keys may arrive in any order.
             impl<'de> serde::Deserialize<'de> for Scheme {
-                fn deserialize<D: serde::Deserializer<'de>>(
-                    deserializer: D,
-                ) -> Result<Self, D::Error> {
-                    fn to_key(s: &str) -> String {
-                        use heck::ToKebabCase;
-                        s.to_kebab_case()
-                    }
+                fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                    fn to_key(s: &str) -> String { use heck::ToKebabCase; s.to_kebab_case() }
 
                     struct SchemeVisitor;
-
                     impl<'de> serde::de::Visitor<'de> for SchemeVisitor {
                         type Value = Scheme;
-
-                        fn expecting(
-                            &self,
-                            f: &mut std::fmt::Formatter<'_>,
-                        ) -> std::fmt::Result {
+                        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                             write!(f, "a map with 'scheme' and 'config' keys")
                         }
-
-                        fn visit_map<A: serde::de::MapAccess<'de>>(
-                            self,
-                            mut map: A,
-                        ) -> Result<Scheme, A::Error> {
+                        fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Scheme, A::Error> {
                             let mut scheme: Option<String> = None;
                             let mut raw_config: Option<serde_value::Value> = None;
 
                             while let Some(key) = map.next_key::<String>()? {
                                 match key.as_str() {
-                                    "scheme" => {
-                                        scheme = Some(map.next_value()?);
-                                    }
-                                    "config" => {
-                                        raw_config = Some(map.next_value()?);
-                                    }
-                                    _ => {
-                                        let _ = map.next_value::<serde::de::IgnoredAny>()?;
-                                    }
+                                    "scheme" => scheme = Some(map.next_value()?),
+                                    "config" => raw_config = Some(map.next_value()?),
+                                    _ => { let _ = map.next_value::<serde::de::IgnoredAny>()?; }
                                 }
                             }
 
-                            let scheme = scheme.ok_or_else(|| {
-                                serde::de::Error::missing_field("scheme")
-                            })?;
-                            let raw_config = raw_config.ok_or_else(|| {
-                                serde::de::Error::missing_field("config")
-                            })?;
+                            let scheme = scheme.ok_or_else(|| serde::de::Error::missing_field("scheme"))?;
+                            let raw_config = raw_config.ok_or_else(|| serde::de::Error::missing_field("config"))?;
 
                             $(
+                                #[cfg(feature = $feature)]
                                 if scheme == to_key(stringify!($variant)) {
                                     use serde::de::IntoDeserializer;
                                     let cfg: [<$variant Config>] =
-                                        serde::Deserialize::deserialize(
-                                            raw_config.into_deserializer()
-                                        )
-                                        .map_err(serde::de::Error::custom)?;
+                                        serde::Deserialize::deserialize(raw_config.into_deserializer())
+                                            .map_err(serde::de::Error::custom)?;
                                     return Ok(Scheme::$variant(cfg));
                                 }
                             )*
 
-                            // Unrecognised scheme → Dynamic.
                             use serde::de::IntoDeserializer;
                             let config: std::collections::HashMap<String, String> =
-                                serde::Deserialize::deserialize(
-                                    raw_config.into_deserializer()
-                                )
-                                .map_err(serde::de::Error::custom)?;
+                                serde::Deserialize::deserialize(raw_config.into_deserializer())
+                                    .map_err(serde::de::Error::custom)?;
                             Ok(Scheme::Dynamic { backend: scheme, config })
                         }
                     }
